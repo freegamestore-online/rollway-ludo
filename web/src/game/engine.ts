@@ -15,7 +15,8 @@ export const FINISH = 57;
 /** The main track has 52 squares, numbered clockwise from red's start. */
 export const TRACK_LENGTH = 52;
 
-const START_CELL: Record<Colour, number> = { red: 0, green: 13, yellow: 26, blue: 39 };
+/** Main-track cell of each colour's start square. */
+export const START_CELL: Record<Colour, number> = { red: 0, green: 13, yellow: 26, blue: 39 };
 
 /** Safe squares: each colour's start square, plus the star 8 squares after it. Tokens here cannot be captured. */
 export const SAFE_CELLS: ReadonlySet<number> = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
@@ -39,11 +40,17 @@ export function trackCell(colour: Colour, progress: number): number | null {
  * seed always gives the same value, and the caller stores `nextSeed` for the next roll.
  */
 export function rollDie(seed: number): { value: number; nextSeed: number } {
+  const nextSeed = advanceSeed(seed);
+  return { value: (nextSeed % 6) + 1, nextSeed };
+}
+
+/** One xorshift32 step. Shared by the die and the AI so every random choice is seeded. */
+export function advanceSeed(seed: number): number {
   let x = seed >>> 0 || FALLBACK_SEED;
   x = (x ^ (x << 13)) >>> 0;
   x = (x ^ (x >>> 17)) >>> 0;
   x = (x ^ (x << 5)) >>> 0;
-  return { value: (x % 6) + 1, nextSeed: x };
+  return x;
 }
 
 export interface CreateGameOptions {
