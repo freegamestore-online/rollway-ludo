@@ -8,8 +8,12 @@ import {
   applyMove,
   canMove,
   createGame,
+  getWinner,
   legalMoves,
+  resolveAutoMove,
   rollDie,
+  singleLegalMove,
+  teamOf,
   trackCell,
 } from "./engine";
 import type { Colour, GameState, Token } from "./types";
@@ -259,5 +263,94 @@ describe("turn flow", () => {
     const before = JSON.stringify(state);
     applyMove(state, { type: "move", colour: "red", index: 0 });
     expect(JSON.stringify(state)).toBe(before);
+  });
+});
+
+/** Every token of `colour` at FINISH. */
+function finishAll(state: GameState, colour: Colour): GameState {
+  let next = state;
+  for (let i = 0; i < 4; i++) next = place(next, colour, i, FINISH);
+  return next;
+}
+
+describe("team mode", () => {
+  it("pairs seats 1 & 3 and seats 2 & 4", () => {
+    expect(teamOf(0)).toBe("team-A");
+    expect(teamOf(2)).toBe("team-A");
+    expect(teamOf(1)).toBe("team-B");
+    expect(teamOf(3)).toBe("team-B");
+  });
+
+  it("wins for team A when both red and yellow have every token home", () => {
+    // Red has one token left, on 56, which a roll of 1 finishes. Yellow is already done.
+    let state = finishAll(createGame(1, { rules: { teamMode: true } }), "yellow");
+    state = finishAll(state, "red");
+    state = { ...place(state, "red", 3, FINISH - 1), phase: "move", die: 1 };
+    const next = applyMove(state, { type: "move", colour: "red", index: 3 });
+    expect(next.phase).toBe("over");
+    expect(next.winner).toBe("team-A");
+  });
+
+  it("does not end the game when only one member of a team is home", () => {
+    // Red finishes alone, but its partner yellow still has tokens out.
+    let state = finishAll(createGame(1, { rules: { teamMode: true } }), "red");
+    state = { ...place(state, "green", 0, 10), phase: "move", die: 1, current: 1 };
+    const next = applyMove(state, { type: "move", colour: "green", index: 0 });
+    expect(next.phase).not.toBe("over");
+    expect(next.winner).toBeNull();
+    expect(getWinner(next)).toBeNull();
+  });
+
+  it("wins for team B when green and blue are both home", () => {
+    // Green has one left at 56. Blue is already done.
+    let state = finishAll(createGame(1, { rules: { teamMode: true } }), "blue");
+    state = { ...place(finishAll(state, "green"), "green", 3, FINISH - 1), phase: "move", die: 1, current: 1 };
+    const next = applyMove(state, { type: "move", colour: "green", index: 3 });
+    expect(next.winner).toBe("team-B");
+  });
+
+  it("ends alone without team mode, when one colour is home", () => {
+    const state = finishAll(createGame(1), "red");
+    expect(getWinner(state)).toBe("red");
+  });
+
+  it("does not count a team when team mode is off, even if a teammate is home", () => {
+    // Yellow is home, and red is its partner in team A. With team mode off only yellow's own tokens count.
+    const state = finishAll(createGame(1), "yellow");
+    expect(getWinner(state, { threeSixesForfeit: true, teamMode: false })).toBe("yellow");
+    expect(getWinner(state, { threeSixesForfeit: true, teamMode: true })).toBeNull();
+  });
+});
+
+describe("single legal move", () => {
+  it("is the only move when exactly one token can move", () => {
+    const state = { ...place(createGame(1), "red", 2, 10), phase: "move" as const, die: 3 };
+    expect(singleLegalMove(state)).toEqual({ type: "move", colour: "red", index: 2 });
+  });
+
+  it("is null when there are several choices", () => {
+    const state = { ...place(place(createGame(1), "red", 0, 1), "red", 1, 10), phase: "move" as const, die: 3 };
+    expect(singleLegalMove(state)).toBeNull();
+  });
+
+  it("is null when there is no move at all", () => {
+    expect(singleLegalMove({ ...createGame(1), phase: "move", die: 3 })).toBeNull();
+  });
+
+  it("is applied straight away by resolveAutoMove when auto-move is on", () => {
+    const state = { ...place(createGame(1), "red", 2, 10), phase: "move" as const, die: 3 };
+    const next = resolveAutoMove(state, true);
+    expect(tokenOf(next, "red", 2).progress).toBe(13);
+    expect(next.phase).toBe("roll");
+  });
+
+  it("is left for the player when auto-move is off", () => {
+    const state = { ...place(createGame(1), "red", 2, 10), phase: "move" as const, die: 3 };
+    expect(resolveAutoMove(state, false)).toBe(state);
+  });
+
+  it("is not applied when there are several choices", () => {
+    const state = { ...place(place(createGame(1), "red", 0, 1), "red", 1, 10), phase: "move" as const, die: 3 };
+    expect(resolveAutoMove(state, true)).toBe(state);
   });
 });

@@ -1,4 +1,4 @@
-import type { Colour, GameState, Move, Player, Rules, Token } from "./types";
+import type { Colour, GameState, Move, Player, Rules, TeamId, Token, Winner } from "./types";
 
 export const COLOURS: readonly Colour[] = ["red", "green", "yellow", "blue"];
 export const TOKENS_PER_PLAYER = 4;
@@ -21,7 +21,7 @@ export const START_CELL: Record<Colour, number> = { red: 0, green: 13, yellow: 2
 /** Safe squares: each colour's start square, plus the star 8 squares after it. Tokens here cannot be captured. */
 export const SAFE_CELLS: ReadonlySet<number> = new Set([0, 8, 13, 21, 26, 34, 39, 47]);
 
-const DEFAULT_RULES: Rules = { threeSixesForfeit: true };
+const DEFAULT_RULES: Rules = { threeSixesForfeit: true, teamMode: false };
 
 /** Seed used if a caller passes 0, since xorshift32 gets stuck on zero. */
 const FALLBACK_SEED = 0x9e3779b9;
@@ -84,6 +84,42 @@ export function canMove(token: Token, die: number): boolean {
   if (token.progress === FINISH) return false;
   if (token.progress === YARD) return die === 6;
   return token.progress + die <= FINISH;
+}
+
+/** The team a seat belongs to in team mode. Seats are 0-based, so seats 1 & 3 are indices 0 & 2. */
+export function teamOf(seatIndex: number): TeamId {
+  return seatIndex % 2 === 0 ? "team-A" : "team-B";
+}
+
+/**
+ * The winner, if the game has one. Alone, a player wins by bringing all four tokens
+ * home. In team mode, a team wins when every token of both its members is home.
+ */
+export function getWinner(state: GameState, rules: Rules = state.rules): Winner | null {
+  if (!rules.teamMode) {
+    return state.players.find((p) => p.tokens.every((t) => t.progress === FINISH))?.colour ?? null;
+  }
+  for (const team of ["team-A", "team-B"] as const) {
+    const members = state.players.filter((_, seat) => teamOf(seat) === team);
+    if (members.length > 0 && members.every((p) => p.tokens.every((t) => t.progress === FINISH))) return team;
+  }
+  return null;
+}
+
+/**
+ * The only legal move, if there is exactly one. Null when there are several or none.
+ * Used for auto-move: a single choice needs no tap.
+ */
+export function singleLegalMove(state: GameState): Move | null {
+  const moves = legalMoves(state);
+  return moves.length === 1 ? moves[0]! : null;
+}
+
+/** When auto-move is on, apply the single legal move straight away. Otherwise, or with several choices, return the state unchanged. */
+export function resolveAutoMove(state: GameState, autoMove: boolean): GameState {
+  if (!autoMove) return state;
+  const move = singleLegalMove(state);
+  return move ? applyMove(state, move) : state;
 }
 
 /** Every legal move for the pending roll. Empty unless the game is waiting for a token choice. */
@@ -154,10 +190,8 @@ function moveToken(state: GameState, move: Extract<Move, { type: "move" }>): Gam
   }));
 
   const moved: GameState = { ...state, players, die: null, phase: "roll" };
-  const mine = players[state.current]!;
-  if (mine.tokens.every((t) => t.progress === FINISH)) {
-    return { ...moved, phase: "over", winner: move.colour };
-  }
+  const winner = getWinner(moved);
+  if (winner !== null) return { ...moved, phase: "over", winner };
   // A six earns another roll; the sixes streak carries over.
   return die === 6 ? moved : endTurn(moved);
 }

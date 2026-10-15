@@ -19,7 +19,15 @@ export interface Player {
 export interface Rules {
   /** Three sixes in a row forfeit the turn; the third six does not move. */
   threeSixesForfeit: boolean;
+  /** 2v2: seats 1 & 3 play as one team against seats 2 & 4. The team wins when all its tokens are home. */
+  teamMode: boolean;
 }
+
+/** Teams are by seat: seats 1 & 3 are team A, seats 2 & 4 are team B. */
+export type TeamId = "team-A" | "team-B";
+
+/** Who won: a single colour, or a team in team mode. */
+export type Winner = Colour | TeamId;
 
 export type Phase = "roll" | "move" | "over";
 
@@ -37,7 +45,7 @@ export interface GameState {
   /** Seed for the die. `applyMove` stores the next seed after each roll. */
   seed: number;
   rules: Rules;
-  winner: Colour | null;
+  winner: Winner | null;
 }
 
 export type Move = { type: "roll" } | { type: "move"; colour: Colour; index: number };
