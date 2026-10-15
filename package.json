@@ -9,6 +9,7 @@
     "build": "pnpm --filter @rollway-ludo/web build",
     "preview": "pnpm --filter @rollway-ludo/web preview",
     "typecheck": "pnpm --filter @rollway-ludo/web exec tsc -b",
+    "lint": "pnpm --filter @rollway-ludo/web lint",
     "test": "pnpm --filter @rollway-ludo/web test"
   }
 }
