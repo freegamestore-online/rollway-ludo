@@ -1,30 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useGameSounds } from "@freegamestore/games";
+import { GameButton, useGameSounds } from "@freegamestore/games";
 import { stepAi } from "./game/ai";
-import { FINISH, HOME_FIRST, YARD, applyMove, legalMoves, resolveAutoMove, } from "./game/engine";
+import { FINISH, applyMove, legalMoves, resolveAutoMove } from "./game/engine";
 import { gameEvents, type GameEvent } from "./game/events";
 import { clearGame, saveGame, type SavedGame } from "./game/save";
 import { buildSeats } from "./game/options";
 import { qualifiesForLeaderboard, submitWinScore, winScore } from "./game/leaderboard";
-import type { GameState, Move, Winner } from "./game/types";
+import type { Colour, GameState, Move, Winner } from "./game/types";
+import Board from "./Board";
+import Die from "./Die";
 
 /** Pause between AI actions, so a player can follow what happened. */
 const AI_DELAY_MS = 600;
 
-const COLOUR_NAMES: Record<string, string> = { red: "Red", green: "Green", yellow: "Yellow", blue: "Blue" };
+const COLOUR_NAMES: Record<Colour, string> = { red: "Red", green: "Green", yellow: "Yellow", blue: "Blue" };
 
 interface MatchProps {
   /** The game to play: a fresh one, or a save being resumed. */
   start: SavedGame;
-  onQuit: () => void;
+  /** Open the menu, to change options or see the leaderboard. */
+  onMenu: () => void;
+  /** Begin another game with the same options. */
+  onRestart: () => void;
 }
 
 /**
  * One game. AI seats play on a timer, and auto-move applies a lone legal move at
- * once. Human seats use the buttons below. Every change is saved, so a reload
- * resumes here, and a finished game clears its save and may post a leaderboard win.
+ * once. Human seats use the buttons below the board. Every change is saved, so a
+ * reload resumes here, and a finished game clears its save and may post a win.
  */
-export default function Match({ start, onQuit }: MatchProps) {
+export default function Match({ start, onMenu, onRestart }: MatchProps) {
   const opts = start.opts;
   const seats = useMemo(() => buildSeats(opts), [opts]);
   const [session, setSession] = useState(() => ({ game: start.state, aiSeed: start.aiSeed }));
@@ -76,59 +81,55 @@ export default function Match({ start, onQuit }: MatchProps) {
   const humanCanMove = !aiTurn && game.phase === "move";
 
   return (
-    <div className="flex flex-col items-center gap-4 w-full max-w-md">
-      <p className="text-lg font-semibold" role="status">
+    <div className="flex flex-col items-center gap-2 w-full h-full min-h-0 max-w-md">
+      <p className="text-base font-semibold" role="status">
         {statusText(game, currentDifficulty)}
       </p>
 
-      {game.phase === "move" && game.die !== null && (
-        <p style={{ color: "var(--muted)" }}>Rolled a {game.die}</p>
-      )}
+      <div className="w-full max-w-88 aspect-square min-h-0">
+        <Board players={game.players} />
+      </div>
 
-      <ul className="w-full flex flex-col gap-2">
-        {game.players.map((player, seat) => (
-          <li key={player.colour} className="rounded p-3" style={{ background: "var(--panel)" }}>
-            <p className="font-semibold">
-              Seat {seat + 1}: {COLOUR_NAMES[player.colour]}
-            </p>
-            <p className="text-sm" style={{ color: "var(--muted)" }}>
-              {player.tokens.map((t) => describeProgress(t.progress)).join(" · ")}
-            </p>
-          </li>
-        ))}
-      </ul>
+      <div className="flex flex-col items-center gap-2 w-full">
+        {/* Keyed by the seed, so every roll replays the tumble. */}
+        <Die key={game.seed} value={game.die} />
+        <ul className="grid grid-cols-2 gap-2 w-full max-w-88 text-sm">
+          {game.players.map((player, seat) => (
+            <li key={player.colour} className="rounded-lg px-3 py-2 bg-[var(--panel)] text-[var(--ink)]">
+              {seat + 1} {COLOUR_NAMES[player.colour]}
+              {seats[player.colour] ? ` · AI ${seats[player.colour]}` : ""}
+              <span className="block text-[var(--muted)]">{player.tokens.filter((t) => t.progress === FINISH).length} of 4 home</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       {humanCanRoll && (
-        <button className="rounded-full px-5 py-2 font-semibold" style={buttonStyle} onClick={() => act({ type: "roll" })}>
+        <GameButton size="lg" onClick={() => act({ type: "roll" })}>
           Roll
-        </button>
+        </GameButton>
       )}
 
       {humanCanMove && (
         <div className="flex flex-wrap justify-center gap-2">
           {moves.map((move) =>
             move.type === "move" ? (
-              <button
-                key={move.index}
-                className="rounded-full px-4 py-2 font-semibold"
-                style={buttonStyle}
-                onClick={() => act(move)}
-              >
+              <GameButton key={move.index} onClick={() => act(move)}>
                 Move token {move.index + 1}
-              </button>
+              </GameButton>
             ) : null,
           )}
         </div>
       )}
 
-      <button className="rounded-full px-4 py-2 text-sm" style={{ border: "1px solid var(--line-strong)" }} onClick={onQuit}>
-        {game.phase === "over" ? "Back to options" : "Quit to options"}
-      </button>
+      {game.phase === "over" && <GameButton onClick={onRestart}>Play again</GameButton>}
+
+      <GameButton variant="ghost" size="sm" onClick={onMenu}>
+        Menu
+      </GameButton>
     </div>
   );
 }
-
-const buttonStyle = { background: "var(--accent)", color: "#fff" };
 
 type Sounds = ReturnType<typeof useGameSounds>;
 
@@ -146,18 +147,12 @@ function statusText(game: GameState, difficulty: string | undefined): string {
   const player = game.players[game.current];
   if (!player) return "";
   const who = `${COLOUR_NAMES[player.colour]}${difficulty ? ` (AI ${difficulty})` : ""}`;
-  return game.phase === "roll" ? `${who} to roll` : `${who} to move`;
+  if (game.phase === "roll") return `${who} to roll`;
+  return `${who} rolled ${game.die}, to move`;
 }
 
 function winnerName(winner: Winner): string {
   if (winner === "team-A") return "Seats 1 & 3";
   if (winner === "team-B") return "Seats 2 & 4";
-  return COLOUR_NAMES[winner] ?? winner;
-}
-
-function describeProgress(progress: number): string {
-  if (progress === YARD) return "yard";
-  if (progress === FINISH) return "home";
-  if (progress >= HOME_FIRST) return "home column";
-  return `step ${progress}`;
+  return COLOUR_NAMES[winner];
 }

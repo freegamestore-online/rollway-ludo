@@ -7,20 +7,21 @@ import Match from "./Match";
 import { loadOptions, saveOptions, type GameOptions } from "./game/options";
 import { clearGame, loadGame, newSavedGame, type SavedGame } from "./game/save";
 
-type Screen = "lobby" | "playing" | "leaderboard";
+type Screen = "playing" | "lobby" | "leaderboard";
 
 /**
- * The game's frame: the platform shell with its theme toggle, the title, and the
- * particle layer. Shows the lobby, a match, or the leaderboard. Options and any
- * unfinished game are restored from localStorage on load.
+ * The game's frame: the platform shell with its theme toggle, and the board. The
+ * board shows straight away: a saved game resumes, otherwise a new one starts. The
+ * menu holds the options and the leaderboard.
  */
 export default function GameShell() {
   const [opts, setOpts] = useState<GameOptions>(loadOptions);
-  const [saved, setSaved] = useState<SavedGame | null>(loadGame);
-  const [screen, setScreen] = useState<Screen>("lobby");
-  // The game being played, and a counter so each one gets a fresh Match.
-  const [active, setActive] = useState<SavedGame | null>(null);
+  // The game on the board. Match saves every change, so loadGame() is always its latest state.
+  const [active, setActive] = useState<SavedGame>(() => loadGame() ?? newSavedGame(loadOptions()));
+  const [screen, setScreen] = useState<Screen>("playing");
+  // Bumped on each new board, so every game gets a fresh Match.
   const [gameNo, setGameNo] = useState(0);
+  const [saved, setSaved] = useState<SavedGame | null>(null);
 
   const play = (game: SavedGame) => {
     setActive(game);
@@ -34,33 +35,32 @@ export default function GameShell() {
     play(newSavedGame(opts));
   };
 
-  const resume = () => {
-    if (!saved) return;
-    setOpts(saved.opts);
-    play(saved);
-  };
-
-  const quit = () => {
+  const openMenu = () => {
     setSaved(loadGame());
     setScreen("lobby");
   };
 
+  const backToGame = () => {
+    const game = loadGame();
+    if (game) {
+      setOpts(game.opts);
+      play(game);
+    }
+  };
+
   return (
-    <PlatformShell
-      topbar={<GameTopbar title="Rollway Ludo" score={0} actions={<GameThemeToggle />} />}
-    >
+    <PlatformShell topbar={<GameTopbar title="Rollway Ludo" score={0} actions={<GameThemeToggle />} />}>
       <GameAuth />
-      <div className="relative flex flex-col items-center justify-center h-full gap-4 p-4 overflow-y-auto">
-        <h1 className="text-3xl font-bold" style={{ fontFamily: "Fraunces, serif" }}>
-          Rollway Ludo
-        </h1>
-        {screen === "playing" && active && <Match key={gameNo} start={active} onQuit={quit} />}
+      <div className="relative flex flex-col items-center justify-center h-full min-h-0 gap-2 p-3 overflow-hidden">
+        {screen === "playing" && (
+          <Match key={gameNo} start={active} onMenu={openMenu} onRestart={() => play(newSavedGame(active.opts))} />
+        )}
         {screen === "lobby" && (
           <Lobby
             opts={opts}
             onChange={setOpts}
             onStart={startNew}
-            onContinue={saved ? resume : null}
+            onBack={saved ? backToGame : null}
             onLeaderboard={() => setScreen("leaderboard")}
           />
         )}

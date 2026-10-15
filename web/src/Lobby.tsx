@@ -1,11 +1,13 @@
+import { GameButton } from "@freegamestore/games";
 import { effectiveTeamMode, type GameOptions, type SeatConfig } from "./game/options";
 
 interface LobbyProps {
   opts: GameOptions;
   onChange: (opts: GameOptions) => void;
+  /** Begin a new game with these options. */
   onStart: () => void;
-  /** Set when an unfinished game is saved, so the player can pick it up. */
-  onContinue: (() => void) | null;
+  /** Back to the game in progress, or null when there is none to return to. */
+  onBack: (() => void) | null;
   onLeaderboard: () => void;
 }
 
@@ -18,8 +20,11 @@ const SEAT_CHOICES: { value: string; label: string; seat: SeatConfig }[] = [
 
 const COLOUR_NAMES = ["Red", "Green", "Yellow", "Blue"];
 
-/** Game options before the game starts: seats, team mode, and the rules toggles. */
-export default function Lobby({ opts, onChange, onStart, onContinue, onLeaderboard }: LobbyProps) {
+/** Tap targets are at least 44px tall, the platform minimum. */
+const CONTROL = "min-h-11 w-full rounded-lg border px-3 bg-[var(--panel)] text-[var(--ink)] border-[var(--line-strong)]";
+
+/** Game options: seats, team mode, and the rules toggles. Opened from the menu, never shown before the board. */
+export default function Lobby({ opts, onChange, onStart, onBack, onLeaderboard }: LobbyProps) {
   const teamAvailable = opts.numSeats === 4;
 
   const setSeat = (i: number, value: string) => {
@@ -30,21 +35,10 @@ export default function Lobby({ opts, onChange, onStart, onContinue, onLeaderboa
   };
 
   return (
-    <form
-      className="flex flex-col gap-4 w-full max-w-sm"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onStart();
-      }}
-    >
+    <div className="flex flex-col gap-3 w-full max-w-sm min-h-0">
       <label className="flex flex-col gap-1">
         <span className="font-semibold">Players</span>
-        <select
-          className="border rounded p-2"
-          style={{ borderColor: "var(--line-strong)", background: "var(--panel)", color: "var(--ink)" }}
-          value={opts.numSeats}
-          onChange={(e) => onChange({ ...opts, numSeats: Number(e.target.value) as 2 | 3 | 4 })}
-        >
+        <select className={CONTROL} value={opts.numSeats} onChange={(e) => onChange({ ...opts, numSeats: Number(e.target.value) as 2 | 3 | 4 })}>
           <option value={2}>2 players</option>
           <option value={3}>3 players</option>
           <option value={4}>4 players</option>
@@ -59,12 +53,7 @@ export default function Lobby({ opts, onChange, onStart, onContinue, onLeaderboa
             <span className="font-semibold">
               Seat {i + 1} ({COLOUR_NAMES[i]})
             </span>
-            <select
-              className="border rounded p-2"
-              style={{ borderColor: "var(--line-strong)", background: "var(--panel)", color: "var(--ink)" }}
-              value={value}
-              onChange={(e) => setSeat(i, e.target.value)}
-            >
+            <select className={CONTROL} value={value} onChange={(e) => setSeat(i, e.target.value)}>
               {SEAT_CHOICES.map((c) => (
                 <option key={c.value} value={c.value}>
                   {c.label}
@@ -75,9 +64,10 @@ export default function Lobby({ opts, onChange, onStart, onContinue, onLeaderboa
         );
       })}
 
-      <label className="flex items-center gap-2" style={{ opacity: teamAvailable ? 1 : 0.5 }}>
+      <label className="flex items-center gap-3 min-h-11" style={{ opacity: teamAvailable ? 1 : 0.5 }}>
         <input
           type="checkbox"
+          className="size-5"
           checked={effectiveTeamMode(opts)}
           disabled={!teamAvailable}
           onChange={(e) => onChange({ ...opts, teamMode: e.target.checked })}
@@ -85,46 +75,39 @@ export default function Lobby({ opts, onChange, onStart, onContinue, onLeaderboa
         <span>Team mode (2v2: seats 1 &amp; 3 vs seats 2 &amp; 4){teamAvailable ? "" : " — needs 4 players"}</span>
       </label>
 
-      <label className="flex items-center gap-2">
+      <label className="flex items-center gap-3 min-h-11">
         <input
           type="checkbox"
+          className="size-5"
           checked={opts.threeSixesForfeit}
           onChange={(e) => onChange({ ...opts, threeSixesForfeit: e.target.checked })}
         />
         <span>Three 6s in a row forfeit the turn</span>
       </label>
 
-      <label className="flex items-center gap-2">
+      <label className="flex items-center gap-3 min-h-11">
         <input
           type="checkbox"
+          className="size-5"
           checked={opts.autoMove}
           onChange={(e) => onChange({ ...opts, autoMove: e.target.checked })}
         />
         <span>Auto-move when there is only one legal move</span>
       </label>
 
-      {onContinue && (
-        <button
-          type="button"
-          className="rounded-full px-5 py-2 font-semibold"
-          style={{ background: "var(--accent)", color: "#fff" }}
-          onClick={onContinue}
-        >
-          Continue saved game
-        </button>
+      <GameButton block onClick={onStart}>
+        Start new game
+      </GameButton>
+
+      {onBack && (
+        <GameButton variant="secondary" block onClick={onBack}>
+          Back to game
+        </GameButton>
       )}
 
-      <button
-        type="submit"
-        className="rounded-full px-5 py-2 font-semibold"
-        style={onContinue ? { border: "1px solid var(--line-strong)" } : { background: "var(--accent)", color: "#fff" }}
-      >
-        Start new game
-      </button>
-
-      <button type="button" className="text-sm underline" onClick={onLeaderboard}>
+      <GameButton variant="ghost" block onClick={onLeaderboard}>
         Leaderboard
-      </button>
-    </form>
+      </GameButton>
+    </div>
   );
 }
