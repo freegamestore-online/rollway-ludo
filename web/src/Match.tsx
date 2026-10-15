@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useGameSounds } from "@freegamestore/games";
 import { stepAi } from "./game/ai";
-import { FINISH, HOME_FIRST, YARD, applyMove, legalMoves, resolveAutoMove } from "./game/engine";
-import { buildSeats, createGameFromOptions, type GameOptions } from "./game/options";
+import { FINISH, HOME_FIRST, YARD, applyMove, legalMoves, resolveAutoMove, } from "./game/engine";
+import { gameEvents, type GameEvent } from "./game/events";
+import { clearGame, saveGame, type SavedGame } from "./game/save";
+import { buildSeats } from "./game/options";
+import { qualifiesForLeaderboard, submitWinScore, winScore } from "./game/leaderboard";
 import type { GameState, Move, Winner } from "./game/types";
 
 /** Pause between AI actions, so a player can follow what happened. */
@@ -9,29 +13,49 @@ const AI_DELAY_MS = 600;
 
 const COLOUR_NAMES: Record<string, string> = { red: "Red", green: "Green", yellow: "Yellow", blue: "Blue" };
 
-function newSeed(): number {
-  return Math.floor(Math.random() * 0xfffffffe) + 1;
-}
-
 interface MatchProps {
-  opts: GameOptions;
+  /** The game to play: a fresh one, or a save being resumed. */
+  start: SavedGame;
   onQuit: () => void;
 }
 
 /**
- * One game under the given options. AI seats play on a timer, and auto-move
- * applies a lone legal move straight away. Human seats use the buttons below.
+ * One game. AI seats play on a timer, and auto-move applies a lone legal move at
+ * once. Human seats use the buttons below. Every change is saved, so a reload
+ * resumes here, and a finished game clears its save and may post a leaderboard win.
  */
-export default function Match({ opts, onQuit }: MatchProps) {
+export default function Match({ start, onQuit }: MatchProps) {
+  const opts = start.opts;
   const seats = useMemo(() => buildSeats(opts), [opts]);
-  const [session, setSession] = useState(() => ({
-    game: createGameFromOptions(newSeed(), opts),
-    aiSeed: newSeed(),
-  }));
-  const { game } = session;
+  const [session, setSession] = useState(() => ({ game: start.state, aiSeed: start.aiSeed }));
+  const { game, aiSeed } = session;
   const current = game.players[game.current];
   const currentDifficulty = current ? seats[current.colour] : undefined;
   const aiTurn = currentDifficulty !== undefined;
+  const sounds = useGameSounds();
+  const lastGame = useRef(game);
+  const submitted = useRef(false);
+
+  // Save after every change. A finished game has nothing to resume, so its save goes.
+  useEffect(() => {
+    if (game.phase === "over") clearGame();
+    else saveGame({ version: 1, state: game, aiSeed, opts });
+  }, [game, aiSeed, opts]);
+
+  // Sound for each event in the step that just happened.
+  useEffect(() => {
+    const prev = lastGame.current;
+    lastGame.current = game;
+    if (prev === game) return;
+    for (const event of gameEvents(prev, game)) SOUND_FOR[event](sounds);
+  }, [game, sounds]);
+
+  // Post a win once. Only qualifying games are sent, and failures stay out of the UI.
+  useEffect(() => {
+    if (submitted.current || game.phase !== "over" || !qualifiesForLeaderboard(game, opts)) return;
+    submitted.current = true;
+    void submitWinScore(winScore(game.turns));
+  }, [game, opts]);
 
   useEffect(() => {
     if (!aiTurn || game.phase === "over") return;
@@ -42,7 +66,7 @@ export default function Match({ opts, onQuit }: MatchProps) {
       });
     }, AI_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [game, aiTurn, seats, opts.autoMove]);
+  }, [game, aiTurn, seats, opts]);
 
   // Auto-move runs right after each action, so a lone legal move never waits for a tap.
   const act = (move: Move) =>
@@ -105,6 +129,17 @@ export default function Match({ opts, onQuit }: MatchProps) {
 }
 
 const buttonStyle = { background: "var(--accent)", color: "#fff" };
+
+type Sounds = ReturnType<typeof useGameSounds>;
+
+/** Which sound plays for each event. */
+const SOUND_FOR: Record<GameEvent, (sounds: Sounds) => void> = {
+  roll: (s) => s.playTick(),
+  hop: (s) => s.playMove(),
+  capture: (s) => s.playDrop(),
+  home: (s) => s.playLevelUp(),
+  over: (s) => s.playGameOver(),
+};
 
 function statusText(game: GameState, difficulty: string | undefined): string {
   if (game.phase === "over" && game.winner) return `${winnerName(game.winner)} wins!`;

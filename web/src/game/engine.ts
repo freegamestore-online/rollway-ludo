@@ -73,6 +73,7 @@ export function createGame(seed: number, options: CreateGameOptions = {}): GameS
     phase: "roll",
     die: null,
     sixesInRow: 0,
+    turns: 0,
     seed,
     rules: { ...DEFAULT_RULES, ...options.rules },
     winner: null,
@@ -197,5 +198,12 @@ function moveToken(state: GameState, move: Extract<Move, { type: "move" }>): Gam
 }
 
 function endTurn(state: GameState): GameState {
-  return { ...state, current: (state.current + 1) % state.players.length, die: null, phase: "roll", sixesInRow: 0 };
+  return {
+    ...state,
+    current: (state.current + 1) % state.players.length,
+    die: null,
+    phase: "roll",
+    sixesInRow: 0,
+    turns: state.turns + 1,
+  };
 }

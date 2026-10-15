@@ -42,6 +42,8 @@ export interface GameState {
   die: number | null;
   /** Consecutive sixes rolled by the current player in this turn. */
   sixesInRow: number;
+  /** Turns completed so far. Feeds the leaderboard score: fewer turns to win scores higher. */
+  turns: number;
   /** Seed for the die. `applyMove` stores the next seed after each roll. */
   seed: number;
   rules: Rules;

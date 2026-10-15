@@ -2,6 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Match from "./Match";
 import { DEFAULT_OPTIONS, type GameOptions } from "./game/options";
+import { newSavedGame } from "./game/save";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -24,7 +25,7 @@ describe("Match", () => {
       ],
       autoMove: true,
     };
-    render(<Match opts={opts} onQuit={() => {}} />);
+    render(<Match start={newSavedGame(opts)} onQuit={() => {}} />);
 
     // Each AI action waits 600ms. Advance until the game reports a winner, with a cap in case it never ends.
     for (let i = 0; i < 20_000 && !screen.queryByText(/wins!/); i++) {
@@ -35,8 +36,13 @@ describe("Match", () => {
     expect(screen.getByRole("status").textContent).toMatch(/wins!/);
   });
 
+  it("saves the game as soon as it starts", () => {
+    render(<Match start={newSavedGame(DEFAULT_OPTIONS)} onQuit={() => {}} />);
+    expect(localStorage.getItem("rollway-save")).not.toBeNull();
+  });
+
   it("shows the human's roll button and no AI moves while it is their turn", () => {
-    render(<Match opts={DEFAULT_OPTIONS} onQuit={() => {}} />);
+    render(<Match start={newSavedGame(DEFAULT_OPTIONS)} onQuit={() => {}} />);
     expect(screen.getByRole("button", { name: "Roll" })).toBeTruthy();
     act(() => {
       vi.advanceTimersByTime(5_000);

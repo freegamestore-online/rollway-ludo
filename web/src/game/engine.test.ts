@@ -354,3 +354,20 @@ describe("single legal move", () => {
     expect(resolveAutoMove(state, true)).toBe(state);
   });
 });
+
+describe("turn count", () => {
+  it("starts at zero and counts each completed turn", () => {
+    const start = createGame(seedFor(2), { colours: ["red", "green"] });
+    expect(start.turns).toBe(0);
+    const next = applyMove(start, { type: "roll" });
+    expect(next.current).toBe(1);
+    expect(next.turns).toBe(1);
+  });
+
+  it("does not count an extra roll after a six as a new turn", () => {
+    const state = { ...place(createGame(1), "red", 0, 10), phase: "move" as const, die: 6 };
+    const next = applyMove(state, { type: "move", colour: "red", index: 0 });
+    expect(next.current).toBe(0);
+    expect(next.turns).toBe(0);
+  });
+});

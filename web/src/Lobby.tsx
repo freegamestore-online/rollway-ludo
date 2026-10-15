@@ -4,6 +4,9 @@ interface LobbyProps {
   opts: GameOptions;
   onChange: (opts: GameOptions) => void;
   onStart: () => void;
+  /** Set when an unfinished game is saved, so the player can pick it up. */
+  onContinue: (() => void) | null;
+  onLeaderboard: () => void;
 }
 
 const SEAT_CHOICES: { value: string; label: string; seat: SeatConfig }[] = [
@@ -16,7 +19,7 @@ const SEAT_CHOICES: { value: string; label: string; seat: SeatConfig }[] = [
 const COLOUR_NAMES = ["Red", "Green", "Yellow", "Blue"];
 
 /** Game options before the game starts: seats, team mode, and the rules toggles. */
-export default function Lobby({ opts, onChange, onStart }: LobbyProps) {
+export default function Lobby({ opts, onChange, onStart, onContinue, onLeaderboard }: LobbyProps) {
   const teamAvailable = opts.numSeats === 4;
 
   const setSeat = (i: number, value: string) => {
@@ -100,12 +103,27 @@ export default function Lobby({ opts, onChange, onStart }: LobbyProps) {
         <span>Auto-move when there is only one legal move</span>
       </label>
 
+      {onContinue && (
+        <button
+          type="button"
+          className="rounded-full px-5 py-2 font-semibold"
+          style={{ background: "var(--accent)", color: "#fff" }}
+          onClick={onContinue}
+        >
+          Continue saved game
+        </button>
+      )}
+
       <button
         type="submit"
         className="rounded-full px-5 py-2 font-semibold"
-        style={{ background: "var(--accent)", color: "#fff" }}
+        style={onContinue ? { border: "1px solid var(--line-strong)" } : { background: "var(--accent)", color: "#fff" }}
       >
-        Start game
+        Start new game
+      </button>
+
+      <button type="button" className="text-sm underline" onClick={onLeaderboard}>
+        Leaderboard
       </button>
     </form>
   );
